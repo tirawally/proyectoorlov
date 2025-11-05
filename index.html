@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hospitales cercanos</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Leaflet CSS (required) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-sA+e2Yk0f6H6v9vFv+gk0n0r3wQv3pG1mXv+gGk0h2M=" crossorigin=""/>
+  <script type="importmap">
+  {
+    "imports": {
+      "leaflet": "https://esm.sh/leaflet@1.9.4"
+    }
+  }
+  </script>
+</head>
+<body>
+  <main class="container">
+    <header>
+      <div class="header-row">
+        <h1>Hospitales cercanos</h1>
+        <div class="auth">
+          <span id="userLabel" style="margin-right:8px"></span>
+          <button id="logoutBtn" class="small" style="display:none">Cerrar sesión</button>
+        </div>
+      </div>
+      <p id="status">Presiona "Encontrar" para usar tu ubicación</p>
+    </header>
+
+    <section class="controls">
+      <label for="radius">Radio (metros): <span id="radiusVal">1500</span></label>
+      <input id="radius" type="range" min="200" max="5000" step="100" value="1500" />
+      <button id="findBtn">Encontrar</button>
+      <button id="locateBtn" title="Centrar en mi ubicación">Centrar</button>
+    </section>
+
+    <section class="content">
+      <div id="map" class="map"></div>
+      <aside class="list">
+        <h2>Resultados</h2>
+        <ul id="results"></ul>
+      </aside>
+    </section>
+
+    <footer>
+      <small>Datos: OpenStreetMap / Overpass API</small>
+    </footer>
+  </main>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>

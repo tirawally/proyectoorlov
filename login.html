@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Iniciar sesión - Hospitales</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* small page-specific centering */
+    body{display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+    .login-card{width:340px;background:white;padding:18px;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,0.08)}
+    .login-card h2{margin:0 0 8px}
+    .login-card input{width:100%;padding:8px;margin:8px 0;border:1px solid #e6e6e6;border-radius:6px}
+    .login-actions{display:flex;justify-content:space-between;align-items:center;gap:8px}
+    .login-actions button{background:var(--accent);color:white;padding:8px 12px;border-radius:6px;border:none;cursor:pointer}
+    .link-button{background:transparent;border:1px solid rgba(10,102,194,0.12);color:var(--accent);padding:8px 10px;border-radius:6px;cursor:pointer}
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <h2 id="formTitle">Iniciar sesión</h2>
+    <p id="formDesc">Ingresa tu usuario y contraseña (local).</p>
+    <input id="loginUser" type="text" placeholder="Usuario" />
+    <input id="loginPass" type="password" placeholder="Contraseña" />
+    <!-- Register fields (hidden until toggle) -->
+    <input id="regPassConfirm" type="password" placeholder="Confirmar contraseña" style="display:none" />
+    <div class="login-actions">
+      <button id="doLogin">Entrar</button>
+      <button id="doRegister" style="display:none">Registrarse</button>
+      <button id="toggleMode" class="link-button">Crear cuenta</button>
+      <button id="toMain" class="link-button" title="Ir a la app (si ya iniciaste sesión)">Ir a la app</button>
+    </div>
+    <small class="muted">La sesión se guarda en tu navegador (localStorage).</small>
+  </div>
+
+  <script>
+    const AUTH_KEY = "hosp_app_user_v2";
+    const USERS_KEY = "hosp_app_users_v1";
+    const loginUser = document.getElementById("loginUser");
+    const loginPass = document.getElementById("loginPass");
+    const regPassConfirm = document.getElementById("regPassConfirm");
+    const doLogin = document.getElementById("doLogin");
+    const doRegister = document.getElementById("doRegister");
+    const toggleMode = document.getElementById("toggleMode");
+    const toMain = document.getElementById("toMain");
+    const formTitle = document.getElementById("formTitle");
+    const formDesc = document.getElementById("formDesc");
+
+    function setCurrentUser(obj) {
+      try {
+        if (obj && obj.name) localStorage.setItem(AUTH_KEY, JSON.stringify(obj));
+        else localStorage.removeItem(AUTH_KEY);
+      } catch(e){}
+    }
+
+    function getCurrentUser() {
+      try {
+        const raw = localStorage.getItem(AUTH_KEY);
+        if (!raw) return null;
+        const obj = JSON.parse(raw);
+        return obj && obj.name ? obj : null;
+      } catch(e){ return null;}
+    }
+
+    function getUsers(){
+      try{
+        const raw = localStorage.getItem(USERS_KEY);
+        return raw ? JSON.parse(raw) : {};
+      }catch(e){return {}}
+    }
+
+    function saveUsers(obj){
+      try{ localStorage.setItem(USERS_KEY, JSON.stringify(obj)); }catch(e){}
+    }
+
+    function switchToRegister(show){
+      if(show){
+        formTitle.textContent = "Crear cuenta";
+        formDesc.textContent = "Elige un usuario y contraseña.";
+        regPassConfirm.style.display = "";
+        doRegister.style.display = "";
+        doLogin.style.display = "none";
+        toggleMode.textContent = "Ya tengo cuenta";
+      } else {
+        formTitle.textContent = "Iniciar sesión";
+        formDesc.textContent = "Ingresa tu usuario y contraseña (local).";
+        regPassConfirm.style.display = "none";
+        doRegister.style.display = "none";
+        doLogin.style.display = "";
+        toggleMode.textContent = "Crear cuenta";
+      }
+    }
+
+    doLogin.addEventListener("click", ()=>{
+      const name = (loginUser.value || "").trim();
+      const pass = (loginPass.value || "");
+      if (!name) { alert("Ingresa un nombre de usuario"); return; }
+      if (!pass) { alert("Ingresa una contraseña"); return; }
+      const users = getUsers();
+      if (!users[name] || users[name].password !== pass) {
+        alert("Usuario o contraseña incorrecta");
+        return;
+      }
+      setCurrentUser({ name });
+      window.location.href = "index.html";
+    });
+
+    doRegister.addEventListener("click", ()=>{
+      const name = (loginUser.value || "").trim();
+      const pass = (loginPass.value || "");
+      const pass2 = (regPassConfirm.value || "");
+      if (!name) { alert("Ingresa un nombre de usuario"); return; }
+      if (!pass) { alert("Ingresa una contraseña"); return; }
+      if (pass !== pass2) { alert("Las contraseñas no coinciden"); return; }
+      const users = getUsers();
+      if (users[name]) { alert("Ese usuario ya existe"); return; }
+      users[name] = { password: pass, createdAt: Date.now() };
+      saveUsers(users);
+      alert("Cuenta creada. Ahora puedes iniciar sesión.");
+      switchToRegister(false);
+    });
+
+    toggleMode.addEventListener("click", ()=>{
+      const isRegistering = doRegister.style.display !== "none";
+      switchToRegister(isRegistering ? false : true);
+    });
+
+    toMain.addEventListener("click", ()=>{
+      const user = getCurrentUser();
+      if (user) window.location.href = "index.html";
+      else alert("No hay sesión. Ingresa usuario y contraseña primero.");
+    });
+
+    // If already logged in, go to app directly
+    if (getCurrentUser()) window.location.href = "index.html";
+    // initialize form state
+    switchToRegister(false);
+  </script>
+</body>
+</html>
