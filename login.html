@@ -4,137 +4,536 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Iniciar sesión - Hospitales</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="css/style.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "firebase/app": "https://esm.sh/firebase@12.5.0/app",
+      "firebase/auth": "https://esm.sh/firebase@12.5.0/auth",
+      "firebase/firestore": "https://esm.sh/firebase@12.5.0/firestore",
+      "firebase/analytics": "https://esm.sh/firebase@12.5.0/analytics"
+    }
+  }
+  </script>
   <style>
     /* small page-specific centering */
     body{display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
     .login-card{width:340px;background:white;padding:18px;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,0.08)}
     .login-card h2{margin:0 0 8px}
-    .login-card input{width:100%;padding:8px;margin:8px 0;border:1px solid #e6e6e6;border-radius:6px}
-    .login-actions{display:flex;justify-content:space-between;align-items:center;gap:8px}
-    .login-actions button{background:var(--accent);color:white;padding:8px 12px;border-radius:6px;border:none;cursor:pointer}
+    .login-card input{width:100%;padding:8px;margin:8px 0;border:1px solid #e6e6e6;border-radius:6px;box-sizing:border-box}
+    .login-actions{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+    .login-actions button{background:var(--accent);color:white;padding:8px 12px;border-radius:6px;border:none;cursor:pointer;width:100%}
     .link-button{background:transparent;border:1px solid rgba(10,102,194,0.12);color:var(--accent);padding:8px 10px;border-radius:6px;cursor:pointer}
+    .google-button{background:#4285f4;color:white;padding:8px 12px;border-radius:6px;border:none;cursor:pointer;width:100%;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px}
+    .google-button img{width:18px;height:18px}
+    .divider{text-align:center;margin:12px 0;color:#999;font-size:12px;position:relative}
+    .divider::before,.divider::after{content:'';position:absolute;top:50%;width:40%;height:1px;background:#e6e6e6}
+    .divider::before{left:0}
+    .divider::after{right:0}
+    .register-fields{display:none}
+    .register-fields.show{display:block}
+    #googleLoginContainer{display:block}
+    #googleLoginContainer.hide{display:none}
   </style>
 </head>
 <body>
   <div class="login-card">
     <h2 id="formTitle">Iniciar sesión</h2>
-    <p id="formDesc">Ingresa tu usuario y contraseña (local).</p>
-    <input id="loginUser" type="text" placeholder="Usuario" />
-    <input id="loginPass" type="password" placeholder="Contraseña" />
-    <!-- Register fields (hidden until toggle) -->
-    <input id="regPassConfirm" type="password" placeholder="Confirmar contraseña" style="display:none" />
-    <div class="login-actions">
-      <button id="doLogin">Entrar</button>
-      <button id="doRegister" style="display:none">Registrarse</button>
-      <button id="toggleMode" class="link-button">Crear cuenta</button>
-      <button id="toMain" class="link-button" title="Ir a la app (si ya iniciaste sesión)">Ir a la app</button>
+    <p id="formDesc">Ingresa tu correo y contraseña o inicia sesión con Google.</p>
+    
+    <!-- Login fields -->
+    <div id="loginFields">
+      <input id="loginEmail" type="email" placeholder="Correo electrónico" />
+      <input id="loginPass" type="password" placeholder="Contraseña" />
     </div>
-    <small class="muted">La sesión se guarda en tu navegador (localStorage).</small>
+    
+    <!-- Register fields (hidden until toggle) -->
+    <div id="registerFields" class="register-fields">
+      <input id="regNombre" type="text" placeholder="Nombre" />
+      <input id="regApellido" type="text" placeholder="Apellido" />
+      <input id="regEmail" type="email" placeholder="Correo electrónico" />
+      <input id="regPass" type="password" placeholder="Contraseña" />
+      <input id="regPassConfirm" type="password" placeholder="Confirmar contraseña" />
+    </div>
+    
+    <div class="login-actions">
+      <button id="doLogin" style="display:none">Entrar</button>
+      <button id="doRegister" style="display:none">Registrarse</button>
+      <div id="googleLoginContainer">
+        <button id="googleLogin" class="google-button">
+          <img src="img/icons8-logo-de-google-48.png" alt="Google" />
+          Continuar con Google
+        </button>
+        <div class="divider">o</div>
+      </div>
+      <button id="toggleMode" class="link-button">Crear cuenta</button>
+    </div>
+    <small class="muted" id="statusText">Inicia sesión con tu cuenta de Firebase.</small>
   </div>
 
-  <script>
-    const AUTH_KEY = "hosp_app_user_v2";
-    const USERS_KEY = "hosp_app_users_v1";
-    const loginUser = document.getElementById("loginUser");
-    const loginPass = document.getElementById("loginPass");
-    const regPassConfirm = document.getElementById("regPassConfirm");
-    const doLogin = document.getElementById("doLogin");
-    const doRegister = document.getElementById("doRegister");
-    const toggleMode = document.getElementById("toggleMode");
-    const toMain = document.getElementById("toMain");
-    const formTitle = document.getElementById("formTitle");
-    const formDesc = document.getElementById("formDesc");
+  <script type="module">
+    import { auth, db } from "./firebase/firebase.js";
+    import { 
+      createUserWithEmailAndPassword, 
+      signInWithEmailAndPassword, 
+      signInWithPopup, 
+      GoogleAuthProvider,
+      onAuthStateChanged 
+    } from "firebase/auth";
+    import { 
+      doc, 
+      setDoc, 
+      getDoc 
+    } from "firebase/firestore";
 
-    function setCurrentUser(obj) {
+    (async function() {
       try {
-        if (obj && obj.name) localStorage.setItem(AUTH_KEY, JSON.stringify(obj));
-        else localStorage.removeItem(AUTH_KEY);
-      } catch(e){}
-    }
 
-    function getCurrentUser() {
-      try {
-        const raw = localStorage.getItem(AUTH_KEY);
-        if (!raw) return null;
-        const obj = JSON.parse(raw);
-        return obj && obj.name ? obj : null;
-      } catch(e){ return null;}
-    }
+      const AUTH_KEY = "hosp_app_user_v2";
+      const loginEmail = document.getElementById("loginEmail");
+      const loginPass = document.getElementById("loginPass");
+      const regNombre = document.getElementById("regNombre");
+      const regApellido = document.getElementById("regApellido");
+      const regEmail = document.getElementById("regEmail");
+      const regPass = document.getElementById("regPass");
+      const regPassConfirm = document.getElementById("regPassConfirm");
+      const registerFields = document.getElementById("registerFields");
+      const doLogin = document.getElementById("doLogin");
+      const doRegister = document.getElementById("doRegister");
+      const googleLogin = document.getElementById("googleLogin");
+      const toggleMode = document.getElementById("toggleMode");
+      const formTitle = document.getElementById("formTitle");
+      const formDesc = document.getElementById("formDesc");
+      const statusText = document.getElementById("statusText");
 
-    function getUsers(){
-      try{
-        const raw = localStorage.getItem(USERS_KEY);
-        return raw ? JSON.parse(raw) : {};
-      }catch(e){return {}}
-    }
+        // Verificar que todos los elementos existan
+        if (!doLogin || !doRegister || !googleLogin || !toggleMode) {
+          console.error("Error: No se encontraron algunos elementos del DOM");
+          if (statusText) statusText.textContent = "Error: Elementos faltantes en la página";
+          throw new Error("Elementos del DOM no encontrados");
+        }
 
-    function saveUsers(obj){
-      try{ localStorage.setItem(USERS_KEY, JSON.stringify(obj)); }catch(e){}
-    }
+        const googleProvider = new GoogleAuthProvider();
+        // Configurar el provider para que funcione como popup
+        googleProvider.setCustomParameters({
+          prompt: 'select_account'
+        });
 
-    function switchToRegister(show){
-      if(show){
-        formTitle.textContent = "Crear cuenta";
-        formDesc.textContent = "Elige un usuario y contraseña.";
-        regPassConfirm.style.display = "";
-        doRegister.style.display = "";
-        doLogin.style.display = "none";
-        toggleMode.textContent = "Ya tengo cuenta";
-      } else {
-        formTitle.textContent = "Iniciar sesión";
-        formDesc.textContent = "Ingresa tu usuario y contraseña (local).";
-        regPassConfirm.style.display = "none";
-        doRegister.style.display = "none";
-        doLogin.style.display = "";
-        toggleMode.textContent = "Crear cuenta";
+        function setCurrentUser(obj) {
+          try {
+            if (obj && obj.name) localStorage.setItem(AUTH_KEY, JSON.stringify(obj));
+            else localStorage.removeItem(AUTH_KEY);
+          } catch(e){}
+        }
+
+        function getCurrentUser() {
+          try {
+            const raw = localStorage.getItem(AUTH_KEY);
+            if (!raw) return null;
+            const obj = JSON.parse(raw);
+            return obj && obj.name ? obj : null;
+          } catch(e){ return null;}
+        }
+
+        async function saveUserToFirestore(uid, nombre, apellido, email) {
+          try {
+            // Verificar que db esté inicializado
+            if (!db) {
+              throw new Error("Firestore no está inicializado. Verifica la configuración de Firebase.");
+            }
+            
+            if (!uid) {
+              throw new Error("UID del usuario no está disponible");
+            }
+            
+            const userRef = doc(db, "usuarios", uid);
+            const userData = {
+              nombre: nombre || "",
+              apellido: apellido || "",
+              correo: email || "",
+              createdAt: new Date().toISOString()
+            };
+            
+            console.log("📝 Guardando usuario en Firestore:");
+            console.log("  - Colección: usuarios");
+            console.log("  - Documento ID:", uid);
+            console.log("  - Datos:", userData);
+            
+            // Intentar guardar
+            await setDoc(userRef, userData);
+            console.log("✅ setDoc completado, verificando...");
+            
+            // Esperar un momento para que Firestore procese
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            // Verificar que se guardó correctamente
+            const savedDoc = await getDoc(userRef);
+            if (savedDoc.exists()) {
+              const savedData = savedDoc.data();
+              console.log("✅ Usuario guardado exitosamente en Firestore:");
+              console.log("  - Datos guardados:", savedData);
+              return true;
+            } else {
+              throw new Error("El documento no existe después de guardarlo. Verifica las reglas de Firestore.");
+            }
+          } catch (error) {
+            console.error("❌ Error guardando usuario en Firestore:");
+            console.error("  - Código:", error.code);
+            console.error("  - Mensaje:", error.message);
+            console.error("  - Stack:", error.stack);
+            
+            // Si es un error de permisos, dar más información
+            if (error.code === "permission-denied") {
+              console.error("⚠️ Error de permisos. Verifica que las reglas de Firestore permitan:");
+              console.error("  - Escritura en la colección 'usuarios'");
+              console.error("  - Para usuarios autenticados");
+              console.error("  - Solo en su propio documento (uid == userId)");
+            }
+            
+            throw error;
+          }
+        }
+
+        async function getUserFromFirestore(uid) {
+          try {
+            const userRef = doc(db, "usuarios", uid);
+            const userSnap = await getDoc(userRef);
+            if (userSnap.exists()) {
+              return userSnap.data();
+            }
+            return null;
+          } catch (error) {
+            console.error("Error obteniendo usuario de Firestore:", error);
+            return null;
+          }
+        }
+
+        const loginFields = document.getElementById("loginFields");
+        const googleLoginContainer = document.getElementById("googleLoginContainer");
+
+        function switchToRegister(show){
+          if(show){
+            formTitle.textContent = "Crear cuenta";
+            formDesc.textContent = "Completa tus datos para registrarte.";
+            registerFields.classList.add("show");
+            loginFields.style.display = "none"; // Ocultar campos de login
+            doRegister.style.display = "block";
+            doLogin.style.display = "none";
+            googleLoginContainer.classList.add("hide"); // Ocultar Google y divider
+            toggleMode.textContent = "Ya tengo cuenta";
+          } else {
+            formTitle.textContent = "Iniciar sesión";
+            formDesc.textContent = "Ingresa tu correo y contraseña o inicia sesión con Google.";
+            registerFields.classList.remove("show");
+            loginFields.style.display = "block"; // Mostrar campos de login
+            doRegister.style.display = "none";
+            doLogin.style.display = "block";
+            googleLoginContainer.classList.remove("hide"); // Mostrar Google y divider
+            toggleMode.textContent = "Crear cuenta";
+          }
+        }
+
+        function setStatus(msg, isError = false) {
+          statusText.textContent = msg;
+          statusText.style.color = isError ? "crimson" : "";
+        }
+
+        doLogin.addEventListener("click", async ()=>{
+          const email = (loginEmail.value || "").trim();
+          const pass = (loginPass.value || "");
+          
+          if (!email) { 
+            setStatus("Ingresa un correo electrónico", true);
+            return; 
+          }
+          if (!pass) { 
+            setStatus("Ingresa una contraseña", true);
+            return; 
+          }
+
+          setStatus("Iniciando sesión...");
+          try {
+            const userCredential = await signInWithEmailAndPassword(auth, email, pass);
+            const user = userCredential.user;
+            
+            // Obtener datos adicionales de Firestore
+            const userData = await getUserFromFirestore(user.uid);
+            const displayName = userData 
+              ? `${userData.nombre} ${userData.apellido}`.trim() 
+              : user.displayName || user.email;
+            
+            setCurrentUser({ 
+              uid: user.uid,
+              name: displayName,
+              email: user.email 
+            });
+            
+            setStatus("Sesión iniciada correctamente");
+            setTimeout(() => {
+              window.location.href = "index.html";
+            }, 500);
+          } catch (error) {
+            let errorMsg = "⚠️ Error al iniciar sesión";
+            let alertMsg = "No se pudo iniciar sesión.";
+            
+            if (error.code === "auth/user-not-found") {
+              errorMsg = "⚠️ Usuario no encontrado";
+              alertMsg = "⚠️ ADVERTENCIA: El correo electrónico no está registrado. Por favor, verifica tu correo o crea una cuenta nueva.";
+            } else if (error.code === "auth/wrong-password") {
+              errorMsg = "⚠️ Contraseña incorrecta";
+              alertMsg = "⚠️ ADVERTENCIA: La contraseña ingresada es incorrecta. Por favor, intenta de nuevo.";
+            } else if (error.code === "auth/invalid-email") {
+              errorMsg = "⚠️ Correo electrónico inválido";
+              alertMsg = "⚠️ ADVERTENCIA: El formato del correo electrónico no es válido. Por favor, verifica e intenta de nuevo.";
+            } else if (error.code === "auth/user-disabled") {
+              errorMsg = "⚠️ Usuario deshabilitado";
+              alertMsg = "⚠️ ADVERTENCIA: Esta cuenta ha sido deshabilitada. Contacta al administrador.";
+            } else if (error.code === "auth/network-request-failed") {
+              errorMsg = "⚠️ Error de conexión";
+              alertMsg = "⚠️ ADVERTENCIA: No se pudo conectar al servidor. Verifica tu conexión a internet e intenta de nuevo.";
+            } else if (error.code === "auth/too-many-requests") {
+              errorMsg = "⚠️ Demasiados intentos";
+              alertMsg = "⚠️ ADVERTENCIA: Demasiados intentos fallidos. Por favor, espera unos minutos antes de intentar de nuevo.";
+            } else {
+              errorMsg = `⚠️ Error: ${error.message}`;
+              alertMsg = `⚠️ ADVERTENCIA: ${error.message}`;
+            }
+            
+            setStatus(errorMsg, true);
+            alert(alertMsg);
+          }
+        });
+
+        doRegister.addEventListener("click", async ()=>{
+          const nombre = (regNombre.value || "").trim();
+          const apellido = (regApellido.value || "").trim();
+          const email = (regEmail.value || "").trim();
+          const pass = (regPass.value || "");
+          const pass2 = (regPassConfirm.value || "");
+          
+          if (!nombre) { 
+            setStatus("Ingresa tu nombre", true);
+            return; 
+          }
+          if (!apellido) { 
+            setStatus("Ingresa tu apellido", true);
+            return; 
+          }
+          if (!email) { 
+            setStatus("Ingresa un correo electrónico", true);
+            return; 
+          }
+          if (!pass) { 
+            setStatus("Ingresa una contraseña", true);
+            return; 
+          }
+          if (pass.length < 6) {
+            setStatus("La contraseña debe tener al menos 6 caracteres", true);
+            return;
+          }
+          if (pass !== pass2) { 
+            setStatus("Las contraseñas no coinciden", true);
+            return; 
+          }
+
+          setStatus("Creando cuenta...");
+          try {
+            // Primero crear el usuario en Firebase Auth
+            const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
+            const user = userCredential.user;
+            
+            console.log("Usuario creado en Auth:", user.uid);
+            
+            // Guardar datos adicionales en Firestore
+            setStatus("Guardando datos en Firestore...");
+            
+            // Esperar un momento para asegurar que Auth esté completamente inicializado
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            try {
+              console.log("Intentando guardar en Firestore con:", { uid: user.uid, nombre, apellido, email });
+              console.log("DB object:", db);
+              
+              const result = await saveUserToFirestore(user.uid, nombre, apellido, email);
+              
+              if (result) {
+                console.log("✅ Datos guardados exitosamente en Firestore");
+                setStatus("Cuenta creada y datos guardados exitosamente");
+              } else {
+                throw new Error("No se pudo verificar el guardado");
+              }
+            } catch (firestoreError) {
+              console.error("❌ Error específico de Firestore:", firestoreError);
+              console.error("Código del error:", firestoreError.code);
+              console.error("Mensaje del error:", firestoreError.message);
+              
+              // Mostrar error detallado
+              const errorDetails = firestoreError.code 
+                ? `Código: ${firestoreError.code}, Mensaje: ${firestoreError.message}`
+                : firestoreError.message;
+              
+              alert(`⚠️ ADVERTENCIA: La cuenta se creó en Auth pero hubo un problema guardando los datos en Firestore.\n\n${errorDetails}\n\nPor favor, verifica la consola para más detalles.`);
+              
+              // No continuar si hay error crítico
+              setStatus("Error guardando datos en Firestore", true);
+              return; // Detener el proceso
+            }
+            
+            setCurrentUser({ 
+              uid: user.uid,
+              name: `${nombre} ${apellido}`.trim(),
+              email: email 
+            });
+            
+            setStatus("Cuenta creada exitosamente");
+            setTimeout(() => {
+              window.location.href = "index.html";
+            }, 500);
+          } catch (error) {
+            console.error("Error completo al crear cuenta:", error);
+            let errorMsg = "⚠️ Error al crear la cuenta";
+            let alertMsg = "No se pudo crear la cuenta.";
+            
+            if (error.code === "auth/email-already-in-use") {
+              errorMsg = "⚠️ Este correo ya está registrado";
+              alertMsg = "⚠️ ADVERTENCIA: Este correo electrónico ya está registrado. Por favor, inicia sesión o usa otro correo.";
+            } else if (error.code === "auth/invalid-email") {
+              errorMsg = "⚠️ Correo electrónico inválido";
+              alertMsg = "⚠️ ADVERTENCIA: El formato del correo electrónico no es válido.";
+            } else if (error.code === "auth/weak-password") {
+              errorMsg = "⚠️ La contraseña es muy débil";
+              alertMsg = "⚠️ ADVERTENCIA: La contraseña es muy débil. Debe tener al menos 6 caracteres.";
+            } else if (error.code === "permission-denied") {
+              errorMsg = "⚠️ Error de permisos";
+              alertMsg = "⚠️ ADVERTENCIA: No tienes permisos para guardar datos. Verifica las reglas de Firestore.";
+            } else {
+              errorMsg = `⚠️ Error: ${error.message}`;
+              alertMsg = `⚠️ ADVERTENCIA: ${error.message}`;
+            }
+            
+            setStatus(errorMsg, true);
+            alert(alertMsg);
+          }
+        });
+
+        googleLogin.addEventListener("click", async ()=>{
+          setStatus("Abriendo ventana de Google...");
+          try {
+            // signInWithPopup ya abre una ventana emergente
+            const result = await signInWithPopup(auth, googleProvider);
+            const user = result.user;
+            
+            setStatus("Verificando datos...");
+            
+            // Verificar si el usuario ya existe en Firestore
+            const userData = await getUserFromFirestore(user.uid);
+            
+            if (!userData) {
+              // Si no existe, crear registro con datos de Google
+              setStatus("Guardando datos en Firestore...");
+              const nombre = user.displayName?.split(" ")[0] || "";
+              const apellido = user.displayName?.split(" ").slice(1).join(" ") || "";
+              try {
+                await saveUserToFirestore(user.uid, nombre, apellido, user.email);
+                console.log("Usuario de Google guardado en Firestore");
+              } catch (firestoreError) {
+                console.error("Error guardando usuario de Google en Firestore:", firestoreError);
+                alert(`⚠️ ADVERTENCIA: La sesión se inició pero hubo un problema guardando los datos. Error: ${firestoreError.message}`);
+              }
+            }
+            
+            const displayName = user.displayName || user.email;
+            setCurrentUser({ 
+              uid: user.uid,
+              name: displayName,
+              email: user.email 
+            });
+            
+            setStatus("Sesión iniciada con Google exitosamente");
+            setTimeout(() => {
+              window.location.href = "index.html";
+            }, 500);
+          } catch (error) {
+            console.error("Error en Google login:", error);
+            let errorMsg = "⚠️ Error al iniciar sesión con Google";
+            let alertMsg = "No se pudo iniciar sesión con Google.";
+            
+            if (error.code === "auth/popup-closed-by-user") {
+              errorMsg = "⚠️ Ventana cerrada";
+              alertMsg = "⚠️ ADVERTENCIA: La ventana de Google fue cerrada. Por favor, intenta de nuevo.";
+            } else if (error.code === "auth/cancelled-popup-request") {
+              errorMsg = "⚠️ Solicitud cancelada";
+              alertMsg = "⚠️ ADVERTENCIA: La solicitud fue cancelada. Por favor, intenta de nuevo.";
+            } else if (error.code === "auth/popup-blocked") {
+              errorMsg = "⚠️ Popup bloqueado";
+              alertMsg = "⚠️ ADVERTENCIA: El navegador bloqueó la ventana emergente. Por favor, permite ventanas emergentes para este sitio e intenta de nuevo.";
+            } else if (error.code === "auth/account-exists-with-different-credential") {
+              errorMsg = "⚠️ Cuenta existente";
+              alertMsg = "⚠️ ADVERTENCIA: Ya existe una cuenta con este correo usando otro método de inicio de sesión. Por favor, usa el método original.";
+            } else if (error.code === "auth/network-request-failed") {
+              errorMsg = "⚠️ Error de conexión";
+              alertMsg = "⚠️ ADVERTENCIA: No se pudo conectar al servidor. Verifica tu conexión a internet e intenta de nuevo.";
+            } else {
+              errorMsg = `⚠️ Error: ${error.message}`;
+              alertMsg = `⚠️ ADVERTENCIA: ${error.message}`;
+            }
+            
+            setStatus(errorMsg, true);
+            alert(alertMsg);
+          }
+        });
+
+        toggleMode.addEventListener("click", ()=>{
+          const isRegistering = registerFields.classList.contains("show");
+          switchToRegister(!isRegistering);
+          // Limpiar campos
+          loginEmail.value = "";
+          loginPass.value = "";
+          regNombre.value = "";
+          regApellido.value = "";
+          regEmail.value = "";
+          regPass.value = "";
+          regPassConfirm.value = "";
+          setStatus("Inicia sesión con tu cuenta de Firebase.");
+        });
+
+
+      // Verificar si ya hay una sesión activa
+      onAuthStateChanged(auth, async (user) => {
+        if (user) {
+          const userData = await getUserFromFirestore(user.uid);
+          const displayName = userData 
+            ? `${userData.nombre} ${userData.apellido}`.trim() 
+            : user.displayName || user.email;
+          
+          setCurrentUser({ 
+            uid: user.uid,
+            name: displayName,
+            email: user.email 
+          });
+          
+          // Si ya está autenticado, redirigir
+          window.location.href = "index.html";
+        }
+      });
+
+        // initialize form state - mostrar botón de login al inicio
+        switchToRegister(false);
+        // Asegurar que el botón de login esté visible al cargar
+        doLogin.style.display = "block";
+        
+        console.log("Login page initialized successfully");
+        
+      } catch (error) {
+        console.error("Error inicializando la página de login:", error);
+        const statusText = document.getElementById("statusText");
+        if (statusText) {
+          statusText.textContent = `Error: ${error.message}`;
+          statusText.style.color = "crimson";
+        }
+        alert(`Error al cargar la página: ${error.message}\n\nAsegúrate de estar usando un servidor local (no abrir el archivo directamente).`);
       }
-    }
-
-    doLogin.addEventListener("click", ()=>{
-      const name = (loginUser.value || "").trim();
-      const pass = (loginPass.value || "");
-      if (!name) { alert("Ingresa un nombre de usuario"); return; }
-      if (!pass) { alert("Ingresa una contraseña"); return; }
-      const users = getUsers();
-      if (!users[name] || users[name].password !== pass) {
-        alert("Usuario o contraseña incorrecta");
-        return;
-      }
-      setCurrentUser({ name });
-      window.location.href = "index.html";
-    });
-
-    doRegister.addEventListener("click", ()=>{
-      const name = (loginUser.value || "").trim();
-      const pass = (loginPass.value || "");
-      const pass2 = (regPassConfirm.value || "");
-      if (!name) { alert("Ingresa un nombre de usuario"); return; }
-      if (!pass) { alert("Ingresa una contraseña"); return; }
-      if (pass !== pass2) { alert("Las contraseñas no coinciden"); return; }
-      const users = getUsers();
-      if (users[name]) { alert("Ese usuario ya existe"); return; }
-      users[name] = { password: pass, createdAt: Date.now() };
-      saveUsers(users);
-      alert("Cuenta creada. Ahora puedes iniciar sesión.");
-      switchToRegister(false);
-    });
-
-    toggleMode.addEventListener("click", ()=>{
-      const isRegistering = doRegister.style.display !== "none";
-      switchToRegister(isRegistering ? false : true);
-    });
-
-    toMain.addEventListener("click", ()=>{
-      const user = getCurrentUser();
-      if (user) window.location.href = "index.html";
-      else alert("No hay sesión. Ingresa usuario y contraseña primero.");
-    });
-
-    // If already logged in, go to app directly
-    if (getCurrentUser()) window.location.href = "index.html";
-    // initialize form state
-    switchToRegister(false);
+    })();
   </script>
 </body>
 </html>

@@ -1,4 +1,7 @@
 import L from "leaflet";
+import { auth, db } from "./firebase/firebase.js";
+import { signOut, onAuthStateChanged } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 
 /* Fix default icon URLs for Leaflet when loaded from esm.sh */
 L.Icon.Default.mergeOptions({
@@ -116,7 +119,7 @@ function distanceMeters([lat1,lon1],[lat2,lon2]){
   return R*c;
 }
 
-/* --- Authentication (client-side, localStorage) --- */
+/* --- Authentication (Firebase) --- */
 const AUTH_KEY = "hosp_app_user_v2";
 
 function getCurrentUser() {
@@ -138,7 +141,7 @@ function setCurrentUser(obj) {
   updateAuthUI();
 }
 
-function updateAuthUI() {
+async function updateAuthUI() {
   const user = getCurrentUser();
   if (user) {
     userLabel.textContent = `Hola, ${user.name}`;
@@ -157,9 +160,67 @@ function enableControls(enabled) {
 }
 
 /* --- Event handlers for auth --- */
-logoutBtn.addEventListener("click", ()=>{
-  setCurrentUser(null);
-  setStatus("Sesión cerrada");
+logoutBtn.addEventListener("click", async ()=>{
+  try {
+    await signOut(auth);
+    setCurrentUser(null);
+    setStatus("Sesión cerrada");
+    setTimeout(() => {
+      window.location.href = "login.html";
+    }, 500);
+  } catch (error) {
+    console.error("Error al cerrar sesión:", error);
+    setStatus("Error al cerrar sesión", true);
+  }
+});
+
+// Verificar estado de autenticación de Firebase
+onAuthStateChanged(auth, async (firebaseUser) => {
+  if (firebaseUser) {
+    // Usuario autenticado en Firebase
+    try {
+      const userData = await getDoc(doc(db, "usuarios", firebaseUser.uid));
+      let displayName = firebaseUser.displayName || firebaseUser.email;
+      
+      if (userData.exists()) {
+        const data = userData.data();
+        if (data.nombre && data.apellido) {
+          displayName = `${data.nombre} ${data.apellido}`.trim();
+        } else if (data.nombre) {
+          displayName = data.nombre;
+        }
+      }
+      
+      setCurrentUser({ 
+        uid: firebaseUser.uid,
+        name: displayName,
+        email: firebaseUser.email 
+      });
+    } catch (error) {
+      console.error("Error obteniendo datos del usuario:", error);
+      
+      // Si es un error de permisos, mostrar advertencia pero continuar
+      if (error.code === "permission-denied" || error.message.includes("permission")) {
+        console.warn("⚠️ ADVERTENCIA: No se tienen permisos para leer datos de Firestore. Verifica las reglas de seguridad.");
+        // Continuar con los datos básicos de Auth
+        setCurrentUser({ 
+          uid: firebaseUser.uid,
+          name: firebaseUser.displayName || firebaseUser.email,
+          email: firebaseUser.email 
+        });
+      } else {
+        // Para otros errores, también continuar con datos básicos
+        setCurrentUser({ 
+          uid: firebaseUser.uid,
+          name: firebaseUser.displayName || firebaseUser.email,
+          email: firebaseUser.email 
+        });
+      }
+    }
+  } else {
+    // No hay usuario autenticado
+    setCurrentUser(null);
+  }
 });
 
 /* --- Existing event handlers --- */
@@ -197,5 +258,7 @@ radiusInput.addEventListener("input", ()=> radiusVal.textContent = radiusInput.v
 
 // init
 initMap();
-updateAuthUI();
 geolocate();
+
+// La verificación de autenticación se hace en onAuthStateChanged
+// que actualiza la UI automáticamente

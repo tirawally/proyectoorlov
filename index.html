@@ -4,13 +4,17 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Hospitales cercanos</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="css/style.css" />
   <!-- Leaflet CSS (required) -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-sA+e2Yk0f6H6v9vFv+gk0n0r3wQv3pG1mXv+gGk0h2M=" crossorigin=""/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
   <script type="importmap">
   {
     "imports": {
-      "leaflet": "https://esm.sh/leaflet@1.9.4"
+      "leaflet": "https://esm.sh/leaflet@1.9.4",
+      "firebase/app": "https://esm.sh/firebase@12.5.0/app",
+      "firebase/auth": "https://esm.sh/firebase@12.5.0/auth",
+      "firebase/firestore": "https://esm.sh/firebase@12.5.0/firestore",
+      "firebase/analytics": "https://esm.sh/firebase@12.5.0/analytics"
     }
   }
   </script>
